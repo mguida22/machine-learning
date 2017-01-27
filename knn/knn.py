@@ -1,3 +1,4 @@
+import sys
 import argparse
 from collections import Counter, defaultdict
 
@@ -51,7 +52,7 @@ class Knearest:
     def majority(self, item_indices):
         """
         Given the indices of training examples, return the majority label.  If
-        there's a tie, return the median of the majority labels (as implemented 
+        there's a tie, return the median of the majority labels (as implemented
         in numpy).
 
         :param item_indices: The indices of the k nearest neighbors
@@ -59,12 +60,26 @@ class Knearest:
         assert len(item_indices) == self._k, "Did not get k inputs"
 
         # Finish this function to return the most common y label for
-        # the given indices.  The current return value is a placeholder 
-        # and definitely needs to be changed. 
+        # the given indices.  The current return value is a placeholder
+        # and definitely needs to be changed.
         #
         # http://docs.scipy.org/doc/numpy/reference/generated/numpy.median.html
 
-        return self._y[item_indices[0]]
+        labels = [self._y[index] for index in item_indices]
+        label_count = Counter(labels)
+
+        # can't use Counter.most_common because we want the median in case of tie
+        max_count = 0
+        max_elem = []
+        for i in label_count:
+            count = label_count[i]
+            if count > max_count:
+                max_count = count
+                max_elem = [i]
+            elif count == max_count:
+                max_elem.append(i)
+
+        return int(median(max_elem))
 
     def classify(self, example):
         """
@@ -76,11 +91,12 @@ class Knearest:
 
         # Finish this function to find the k closest points, query the
         # majority function, and return the predicted label.
-        # Again, the current return value is a placeholder 
-        # and definitely needs to be changed. 
+        # Again, the current return value is a placeholder
+        # and definitely needs to be changed.
 
-        return self.majority(list(random.randrange(len(self._y)) \
-                                  for x in xrange(self._k)))
+        dist, ind = self._kdtree.query([example], k=self._k)
+
+        return self.majority(ind[0])
 
     def confusion_matrix(self, test_x, test_y):
         """
@@ -100,6 +116,12 @@ class Knearest:
         d = defaultdict(dict)
         data_index = 0
         for xx, yy in zip(test_x, test_y):
+            label = self.classify(xx)
+            try:
+                d[yy][label] += 1
+            except KeyError:
+                d[yy][label] = 1
+
             data_index += 1
             if data_index % 100 == 0:
                 print("%i/%i for confusion matrix" % (data_index, len(test_x)))
