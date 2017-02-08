@@ -97,8 +97,11 @@ class LogReg:
         :param use_tfidf: A boolean to switch between the raw data and the tfidf representation
         :return: Return the new value of the regression coefficients
         """
-        
-        # TODO: Implement updates in this function
+
+        learning_rate = self.eta(iteration)
+        sig = sigmoid(self.w.dot(train_example.x))
+
+        self.w = self.w + learning_rate * ((train_example.y - sig) - train_example.x)
 
         return self.w
 
