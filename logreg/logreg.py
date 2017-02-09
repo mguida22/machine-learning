@@ -174,18 +174,30 @@ def print_min_max_vocab(w, vocab):
     weights = w.tolist()[1:]
     sorted_weights = sorted(weights)
 
-    index_of_min = []
-    [index_of_min.append(weights.index(sorted_weights[i])) for i in range(0, 5)]
-    index_of_max = []
-    [index_of_max.append(weights.index(sorted_weights[-i])) for i in range(1, 6)]
+    abs_weights = [abs(weight) for weight in weights]
+    # FIXME: not perfect - if there is an identical pos,neg weight we'll skip one
+    sorted_abs_weights = sorted(list(set(abs_weights)))
 
     weight_to_word = zip(w[1:], vocab[1:])
 
-    max_min = []
-    [max_min.append(weight_to_word[i]) for i in (index_of_max + index_of_min)]
-    for item in max_min:
-        print("{}\t{}".format(item[1], item[0]))
+    mins = [weight_to_word[(weights.index(sorted_weights[i]))] for i in range(0, 5)]
+    maxs = [weight_to_word[(weights.index(sorted_weights[-i]))] for i in range(1, 6)]
 
+    print("Good Predictors of Motorcycles")
+    for item in mins:
+        print("{}\t{}".format(item[1], item[0]))
+    print("Good Predictors of Cars")
+    for item in maxs:
+        print("{}\t{}".format(item[1], item[0]))
+    print("Bad Predictors")
+    for i in range(0, 5):
+        try:
+            weight = weights.index(sorted_abs_weights[i])
+        except ValueError:
+            weight = weights.index(-sorted_abs_weights[i])
+        
+        item = weight_to_word[weight]
+        print("{}\t{}".format(item[1], item[0]))
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
