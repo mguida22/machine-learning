@@ -98,22 +98,16 @@ class LogReg:
         :return: Return the new value of the regression coefficients
         """
 
-        y_sigm = train_example.y - sigmoid(self.w.dot(train_example.x))
+        y_sigm_x = (train_example.y - sigmoid(self.w.dot(train_example.x))) * train_example.x
+        self.w = self.w + self.eta(iteration) * y_sigm_x
         shrinkage_factor = 1 - (2 * self.eta(iteration) * self.lam)
 
         for i, feat in enumerate(train_example.x):
             if feat != 0:
-                # NOTE: if we're not doing regularization, there is no need to
-                #       do the LSR, we can just update the old way.
-                if self.lam == 0:
-                    self.w[i] = self.w[i] + self.eta(iteration) * (y_sigm * train_example.x[i])
-                else:
-                    self.w[i] = self.w[i] + (y_sigm * train_example.x[i])
+                if i != 0:
+                    self.w[i] = self.w[i] * (shrinkage_factor ** (self.last_update[i] + 1))
 
-                    if i != 0:
-                        self.w[i] = self.w[i] * (shrinkage_factor ** (self.last_update[i] + 1))
-
-                    self.last_update[i] = 0
+                self.last_update[i] = 0
             else:
                 self.last_update[i] += 1
 
