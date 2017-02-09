@@ -4,6 +4,7 @@ import argparse
 from numpy import zeros, sign 
 from math import exp, log
 from collections import defaultdict
+import matplotlib.pyplot as plt
 
 
 kSEED = 1735
@@ -149,6 +150,41 @@ def read_dataset(positive, negative, vocab, test_proportion=0.1):
 
     return train, test, vocab
 
+def gen_graph(logprobs):
+    """
+    Generates a graph of logprob vs. iteration
+
+    :param logprobs: A list of log probabilities
+    """
+    index_list = []
+    [index_list.append(i * 5) for i in range(0, len(logprobs))]
+    plt.plot(index_list, logprobs)
+    plt.xlabel('Iteration #')
+    plt.ylabel('Log Prob')
+    plt.title('Log Prob vs. Iteration #')
+    plt.show()
+
+def print_min_max_vocab(w, vocab):
+    """
+    Displays vocab most representative of each class
+
+    :param w: A list of weights
+    :param vocab: A list of vocabulary words
+    """
+    weights = w.tolist()[1:]
+    sorted_weights = sorted(weights)
+
+    index_of_min = []
+    [index_of_min.append(weights.index(sorted_weights[i])) for i in range(0, 5)]
+    index_of_max = []
+    [index_of_max.append(weights.index(sorted_weights[-i])) for i in range(1, 6)]
+
+    weight_to_word = zip(w[1:], vocab[1:])
+
+    max_min = []
+    [max_min.append(weight_to_word[i]) for i in (index_of_max + index_of_min)]
+    for item in max_min:
+        print("{}\t{}".format(item[1], item[0]))
 
 
 if __name__ == "__main__":
@@ -165,6 +201,10 @@ if __name__ == "__main__":
                            type=str, default="../data/autos_motorcycles/vocab", required=False)
     argparser.add_argument("--passes", help="Number of passes through train",
                            type=int, default=1, required=False)
+    argparser.add_argument("--threshold", help="Threshold for change in logprob to stop",
+                           type=float, default=0.15, required=False)
+    argparser.add_argument("--show_analysis", help="Display analysis for this run",
+                           type=bool, default=False, required=False)
 
     args = argparser.parse_args()
     train, test, vocab = read_dataset(args.positive, args.negative, args.vocab)
@@ -176,8 +216,13 @@ if __name__ == "__main__":
 
     # Iterations
     iteration = 0
+    logprobs = []
+    # large value to start
+    last_avg = 100000
     for pp in xrange(args.passes):
         random.shuffle(train)
+
+        start_index = len(logprobs)
         for ex in train:
             lr.sg_update(ex, iteration)
             if iteration % 5 == 1:
@@ -185,4 +230,23 @@ if __name__ == "__main__":
                 ho_lp, ho_acc = lr.progress(test)
                 print("Update %i\tTP %f\tHP %f\tTA %f\tHA %f" %
                       (iteration, train_lp, ho_lp, train_acc, ho_acc))
+                logprobs.append(ho_lp)
             iteration += 1
+
+        curr_avg = 0
+        for item in logprobs[start_index:]:
+            curr_avg += item
+        curr_avg = curr_avg / len(logprobs[start_index:])
+
+        if abs(curr_avg - last_avg) < args.threshold:
+            print("Stopping on pass {}, reached threshold of change {}".format(pp, args.threshold))
+            break
+        elif pp == 10:
+            print("Stopping on pass {}, reached threshold of passes {}".format(pp, 10))
+            break
+
+        last_avg = curr_avg
+
+    if args.show_analysis:
+        print_min_max_vocab(lr.w, vocab)
+        gen_graph(logprobs)
