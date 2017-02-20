@@ -1,3 +1,4 @@
+import argparse
 from csv import DictReader, DictWriter
 
 import numpy as np
@@ -33,10 +34,30 @@ class Featurizer:
                 print("%s: %s" % (category, " ".join(feature_names[top10])))
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="feature options")
+    parser.add_argument("--limit", type=int, default=-1,
+                        help="Restrict training to this many examples")
+    parser.add_argument("--holdout", type=bool, default=False,
+                        help="Test locally on holdout set")
+    parser.add_argument("--holdout_size", type=float, default=0.2,
+                        help="Percent of data to use as holdout set")
+
+    args = parser.parse_args()
 
     # Cast to list to keep it all in memory
-    train = list(DictReader(open("../data/spoilers/train.csv", 'r')))
-    test = list(DictReader(open("../data/spoilers/test.csv", 'r')))
+    if args.limit > 0:
+        raw_train = list(DictReader(open("../data/spoilers/train.csv", 'r')))[:args.limit]
+        test = list(DictReader(open("../data/spoilers/test.csv", 'r')))[:args.limit]
+    else:
+        raw_train = list(DictReader(open("../data/spoilers/train.csv", 'r')))
+        test = list(DictReader(open("../data/spoilers/test.csv", 'r')))
+
+    if args.holdout:
+        split_point = int(len(raw_train) * args.holdout_size)
+        holdout = raw_train[:split_point]
+        train = raw_train[split_point:]
+    else:
+        train = raw_train
 
     feat = Featurizer()
 
@@ -48,6 +69,9 @@ if __name__ == "__main__":
     print("Label set: %s" % str(labels))
     x_train = feat.train_feature(x[kTEXT_FIELD] for x in train)
     x_test = feat.test_feature(x[kTEXT_FIELD] for x in test)
+    if args.holdout:
+        x_holdout = feat.test_feature(x[kTEXT_FIELD] for x in holdout)
+        y_holdout = array(list(labels.index(x[kTARGET_FIELD]) for x in holdout))
 
     y_train = array(list(labels.index(x[kTARGET_FIELD])
                          for x in train))
@@ -60,6 +84,9 @@ if __name__ == "__main__":
     lr.fit(x_train, y_train)
 
     feat.show_top10(lr, labels)
+
+    if args.holdout:
+        print(lr.score(x_holdout, y_holdout))
 
     predictions = lr.predict(x_test)
     o = DictWriter(open("predictions.csv", 'w'), ["Id", "spoiler"])
