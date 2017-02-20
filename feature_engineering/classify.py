@@ -4,7 +4,7 @@ from csv import DictReader, DictWriter
 import numpy as np
 from numpy import array
 
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import SGDClassifier
 
 kTARGET_FIELD = 'spoiler'
@@ -13,7 +13,7 @@ kTEXT_FIELD = 'sentence'
 
 class Featurizer:
     def __init__(self):
-        self.vectorizer = CountVectorizer()
+        self.vectorizer = TfidfVectorizer()
 
     def train_feature(self, examples):
         return self.vectorizer.fit_transform(examples)
