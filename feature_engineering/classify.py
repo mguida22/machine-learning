@@ -5,6 +5,7 @@ import numpy as np
 from numpy import array
 
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.feature_extraction import DictVectorizer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import classification_report, confusion_matrix
@@ -12,6 +13,17 @@ from sklearn.pipeline import FeatureUnion, Pipeline
 
 
 kTARGET_FIELD = "spoiler"
+
+MURDER_WORDS = ["kill", "kills", "killed",
+                "murder", "murdered", "murders",
+                "death", "dies", "dead"]
+END_WORDS = ["reveal", "revealed", "reveals",
+             "turns", "out", "actually", "finale", "end"]
+
+PUNCTUATION = string.punctuation
+
+def remove_punctuation(doc):
+    return "".join([ch for ch in doc if ch not in PUNCTUATION]).lower()
 
 class ItemSelector(BaseEstimator, TransformerMixin):
     def __init__(self, key):
@@ -22,6 +34,25 @@ class ItemSelector(BaseEstimator, TransformerMixin):
 
     def transform(self, data):
         return [item[self.key] for item in data]
+
+class KeyWordsTransformer(BaseEstimator, TransformerMixin):
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, sentences):
+        result = []
+        for sentence in sentences:
+            end_count = 0
+            murder_count = 0
+            for word in sentence:
+                if any(end_word == word for end_word in END_WORDS):
+                    end_count += 1
+                if any(murder_word == word for murder_word in MURDER_WORDS):
+                    murder_count += 1
+
+            result.append({ "end_word_count": end_count, "murder_count": murder_count })
+
+        return result
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="feature options")
@@ -36,21 +67,42 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Need names for analysis, but there has to be a way to programatically get them
+    feature_union_names = ["sentence", "ngrams", "trope", "keywords"]
     pipeline = Pipeline([
         ("union", FeatureUnion(
             transformer_list=[
-                # Pipeline for sentences
                 ("sentence", Pipeline([
                     ("selector", ItemSelector(key="sentence")),
                     ("vectorizer", TfidfVectorizer()),
                 ])),
 
-                # Pipeline for tropes
+                ("ngrams", Pipeline([
+                    ("selector", ItemSelector(key="sentence")),
+                    # TODO: filter or do something with names here
+                    ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
+                                                   ngram_range=(2, 5))),
+                ])),
+
                 ("trope", Pipeline([
                     ("selector", ItemSelector(key="trope")),
                     ("vectorizer", CountVectorizer(lowercase=False)),
                 ])),
+
+                ("keywords", Pipeline([
+                    ("selector", ItemSelector(key="sentence")),
+                    ("count_keywords", KeyWordsTransformer()),
+                    ("vectorizer", DictVectorizer()),
+                ])),
             ],
+
+            # weight components in FeatureUnion
+            transformer_weights={
+                "sentence": 1.0,
+                "ngrams": 1.0,
+                "trope": 1.0,
+                "keywords": 1.0,
+            },
         )),
 
         ("classifier", SGDClassifier(loss="log", penalty="l2", shuffle=True))
@@ -112,7 +164,7 @@ if __name__ == "__main__":
 
         # Top/Bottom feature names, for each feature
         classifier_coefs = pipeline.named_steps["classifier"].coef_[0]
-        for key in ["sentence", "trope"]:
+        for key in feature_union_names:
             feature = pipeline.named_steps["union"].get_params()[key]
             feature_names = np.asarray(feature.named_steps["vectorizer"].get_feature_names())
 
@@ -123,8 +175,8 @@ if __name__ == "__main__":
             classifier_coefs = classifier_coefs[len(feature_names):]
 
             print("\n--- Predictors for {} ---".format(key))
-            print("Pos:\n%s" % " ".join(feature_names[top10]))
-            print("\nNeg:\n%s" % " ".join(feature_names[bottom10]))
+            print("Pos:\n%s" % ", ".join(feature_names[top10]))
+            print("\nNeg:\n%s" % ", ".join(feature_names[bottom10]))
     else:
         print("Predicting and saving test data...")
         predictions = model.predict(test)
