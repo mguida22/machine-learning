@@ -1,4 +1,4 @@
-import argparse
+import argparse, string
 from csv import DictReader, DictWriter
 
 import numpy as np
@@ -7,12 +7,54 @@ from numpy import array
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import SGDClassifier
 
+from nltk import pos_tag, word_tokenize
+from nltk.corpus import wordnet
+from nltk.stem import WordNetLemmatizer
+
 kTARGET_FIELD = 'spoiler'
 kTEXT_FIELD = 'sentence'
 
+# string.punctuation, but without the !
+# PUNCTUATION = "\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+PUNCTUATION = string.punctuation
+
+def remove_punctuation(doc):
+    return "".join([ch for ch in doc if ch not in PUNCTUATION]).lower()
+
+# need to convert different styles of POS tags
+# function is from http://stackoverflow.com/a/15590384/3711733
+def wordnet_pos_from_treebank_pos(tag):
+    if tag.startswith('J'):
+        return wordnet.ADJ
+    elif tag.startswith('V'):
+        return wordnet.VERB
+    elif tag.startswith('N'):
+        return wordnet.NOUN
+    elif tag.startswith('R'):
+        return wordnet.ADV
+    else:
+        return None
+
+class LemmaTokenizer:
+    def __init__(self):
+        self.wnl = WordNetLemmatizer()
+
+    def __call__(self, doc):
+        result = []
+        tokens = word_tokenize(doc)
+        for item in pos_tag(tokens):
+            pos = wordnet_pos_from_treebank_pos(item[1])
+            if pos:
+                result.append(self.wnl.lemmatize(item[0], pos))
+            else:
+                result.append(self.wnl.lemmatize(item[0]))
+
+        return result
 
 class Featurizer:
     def __init__(self):
+        # self.vectorizer = TfidfVectorizer(preprocessor=remove_punctuation,
+        #                                   tokenizer=LemmaTokenizer())
         self.vectorizer = TfidfVectorizer()
 
     def train_feature(self, examples):
