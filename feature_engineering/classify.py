@@ -7,7 +7,7 @@ from numpy import array
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import SGDClassifier
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 
@@ -94,11 +94,37 @@ if __name__ == "__main__":
     model = pipeline.fit(train, y_train)
 
     if args.dev:
+        # Score on holdout set
         score = model.score(holdout, y_holdout)
-        print("Score:\t{}".format(score))
+        print("Accuracy Score:\t{}\n".format(score))
+
+        # Scikit classification_report
         print("Classification Report:\n")
         predictions = model.predict(holdout)
         print(classification_report(predictions, y_holdout, target_names=labels))
+
+        # Confusion Matrix
+        print("Confusion Matrix:\n")
+        print("\t{}".format("\t".join(labels)))
+        cm = confusion_matrix(y_holdout, predictions)
+        for i, item in enumerate(cm):
+            print("{}\t{}".format(labels[i], "\t".join(str(x) for x in item)))
+
+        # Top/Bottom feature names, for each feature
+        classifier_coefs = pipeline.named_steps["classifier"].coef_[0]
+        for key in ["sentence", "trope"]:
+            feature = pipeline.named_steps["union"].get_params()[key]
+            feature_names = np.asarray(feature.named_steps["vectorizer"].get_feature_names())
+
+            top10 = np.argsort(classifier_coefs[:len(feature_names)])[-10:]
+            bottom10 = np.argsort(classifier_coefs[:len(feature_names)])[:10]
+
+            # trim off old coefs as we use them
+            classifier_coefs = classifier_coefs[len(feature_names):]
+
+            print("\n--- Predictors for {} ---".format(key))
+            print("Pos:\n%s" % " ".join(feature_names[top10]))
+            print("\nNeg:\n%s" % " ".join(feature_names[bottom10]))
     else:
         print("Predicting and saving test data...")
         predictions = model.predict(test)
