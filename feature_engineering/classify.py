@@ -59,9 +59,23 @@ if __name__ == "__main__":
     train = list(DictReader(open("../data/spoilers/train.csv", "r")))
     test = list(DictReader(open("../data/spoilers/test.csv", "r")))
 
-    if args.limit:
-        train = train[:args.limit]
-        test = test[:args.limit]
+    if args.limit > 0:
+        # we need to get a break point that is close to the limit requested.
+        # we can't just use args.limit, because we want the train/holdout sets
+        # to be representative of our real test set, where no 'page' present in
+        # the train set will be included in the test set
+        last_page = ""
+        potential_breaks_list = []
+        for i, item in enumerate(train):
+            if item["page"] != last_page:
+                last_page = item["page"]
+                potential_breaks_list.append(i)
+
+        index = np.searchsorted(potential_breaks_list, args.limit)
+        limit_index = potential_breaks_list[index]
+
+        train = train[:limit_index]
+        test = test[:limit_index]
 
     if args.dev:
         split_point = int(len(train) * args.holdout_size)
