@@ -4,149 +4,92 @@ from csv import DictReader, DictWriter
 import numpy as np
 from numpy import array
 
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import classification_report
+from sklearn.pipeline import FeatureUnion, Pipeline
 
-from nltk import pos_tag, word_tokenize
-from nltk.corpus import wordnet
-from nltk.stem import WordNetLemmatizer
 
-kTARGET_FIELD = 'spoiler'
-kTEXT_FIELD = 'sentence'
+kTARGET_FIELD = "spoiler"
 
-# string.punctuation, but without the !
-# PUNCTUATION = "\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
-PUNCTUATION = string.punctuation
+class ItemSelector(BaseEstimator, TransformerMixin):
+    def __init__(self, key):
+        self.key = key
 
-def remove_punctuation(doc):
-    return "".join([ch for ch in doc if ch not in PUNCTUATION]).lower()
+    def fit(self, x, y=None):
+        return self
 
-# need to convert different styles of POS tags
-# function is from http://stackoverflow.com/a/15590384/3711733
-def wordnet_pos_from_treebank_pos(tag):
-    if tag.startswith('J'):
-        return wordnet.ADJ
-    elif tag.startswith('V'):
-        return wordnet.VERB
-    elif tag.startswith('N'):
-        return wordnet.NOUN
-    elif tag.startswith('R'):
-        return wordnet.ADV
-    else:
-        return None
-
-class LemmaTokenizer:
-    def __init__(self):
-        self.wnl = WordNetLemmatizer()
-
-    def __call__(self, doc):
-        result = []
-        tokens = word_tokenize(doc)
-        for item in pos_tag(tokens):
-            pos = wordnet_pos_from_treebank_pos(item[1])
-            if pos:
-                result.append(self.wnl.lemmatize(item[0], pos))
-            else:
-                result.append(self.wnl.lemmatize(item[0]))
-
-        return result
-
-class Featurizer:
-    def __init__(self):
-        # self.vectorizer = TfidfVectorizer(preprocessor=remove_punctuation,
-        #                                   tokenizer=LemmaTokenizer())
-        self.vectorizer = TfidfVectorizer()
-
-    def train_feature(self, examples):
-        return self.vectorizer.fit_transform(examples)
-
-    def test_feature(self, examples):
-        return self.vectorizer.transform(examples)
-
-    def show_top10(self, classifier, categories):
-        feature_names = np.asarray(self.vectorizer.get_feature_names())
-        if len(categories) == 2:
-            top10 = np.argsort(classifier.coef_[0])[-10:]
-            bottom10 = np.argsort(classifier.coef_[0])[:10]
-            print("Pos: %s" % " ".join(feature_names[top10]))
-            print("Neg: %s" % " ".join(feature_names[bottom10]))
-        else:
-            for i, category in enumerate(categories):
-                top10 = np.argsort(classifier.coef_[i])[-10:]
-                print("%s: %s" % (category, " ".join(feature_names[top10])))
+    def transform(self, data):
+        return [item[self.key] for item in data]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="feature options")
     parser.add_argument("--limit", type=int, default=-1,
                         help="Restrict training to this many examples")
-    parser.add_argument("--holdout", action="store_true",
-                        help="Test locally on holdout set")
+    parser.add_argument("--dev", action="store_true",
+                        help="Test locally with holdout set, don't actually predict")
     parser.add_argument("--holdout_size", type=float, default=0.2,
                         help="Percent of data to use as holdout set")
-    parser.add_argument("--no_predict", action="store_false",
-                        help="Calculate and save predictions")
     parser.add_argument("--iterations", type=int, default=1,
                         help="How many iterations to do (use with --no_predict)")
 
     args = parser.parse_args()
 
-    score_sum = 0
-    for count in xrange(0, args.iterations):
-        # Cast to list to keep it all in memory
-        if args.limit > 0:
-            raw_train = list(DictReader(open("../data/spoilers/train.csv", 'r')))[:args.limit]
-            test = list(DictReader(open("../data/spoilers/test.csv", 'r')))[:args.limit]
-        else:
-            raw_train = list(DictReader(open("../data/spoilers/train.csv", 'r')))
-            test = list(DictReader(open("../data/spoilers/test.csv", 'r')))
+    pipeline = Pipeline([
+        ("union", FeatureUnion(
+            transformer_list=[
+                # Pipeline for sentences
+                ("sentence", Pipeline([
+                    ("selector", ItemSelector(key="sentence")),
+                    ("vectorizer", TfidfVectorizer()),
+                ])),
 
-        if args.holdout:
-            split_point = int(len(raw_train) * args.holdout_size)
-            holdout = raw_train[:split_point]
-            train = raw_train[split_point:]
-        else:
-            train = raw_train
+                # Pipeline for tropes
+                ("trope", Pipeline([
+                    ("selector", ItemSelector(key="trope")),
+                    ("vectorizer", CountVectorizer(lowercase=False)),
+                ])),
+            ],
+        )),
 
-        feat = Featurizer()
+        ("classifier", SGDClassifier(loss="log", penalty="l2", shuffle=True))
+    ])
 
-        labels = []
-        for line in train:
-            if not line[kTARGET_FIELD] in labels:
-                labels.append(line[kTARGET_FIELD])
+    train = list(DictReader(open("../data/spoilers/train.csv", "r")))
+    test = list(DictReader(open("../data/spoilers/test.csv", "r")))
 
-        print("Label set: %s" % str(labels))
-        x_train = feat.train_feature(x[kTEXT_FIELD] for x in train)
-        x_test = feat.test_feature(x[kTEXT_FIELD] for x in test)
-        if args.holdout:
-            x_holdout = feat.test_feature(x[kTEXT_FIELD] for x in holdout)
-            y_holdout = array(list(labels.index(x[kTARGET_FIELD]) for x in holdout))
+    if args.limit:
+        train = train[:args.limit]
+        test = test[:args.limit]
 
-        y_train = array(list(labels.index(x[kTARGET_FIELD])
-                             for x in train))
+    if args.dev:
+        split_point = int(len(train) * args.holdout_size)
+        holdout = train[:split_point]
+        train = train[split_point:]
 
-        print(len(train), len(y_train))
-        print(set(y_train))
+    labels = []
+    for line in train:
+        if not line[kTARGET_FIELD] in labels:
+            labels.append(line[kTARGET_FIELD])
 
-        # Train classifier
-        lr = SGDClassifier(loss='log', penalty='l2', shuffle=True)
-        lr.fit(x_train, y_train)
+    y_train = array(list(labels.index(item[kTARGET_FIELD]) for item in train))
+    if args.dev:
+        y_holdout = array(list(labels.index(item[kTARGET_FIELD]) for item in holdout))
 
-        feat.show_top10(lr, labels)
+    model = pipeline.fit(train, y_train)
 
-        if args.holdout:
-            score = lr.score(x_holdout, y_holdout)
-            score_sum += score
-            print(score)
-
-        if args.no_predict:
-            print('making predictions')
-            predictions = lr.predict(x_test)
-            print('saving predictions')
-            o = DictWriter(open("predictions.csv", 'w'), ["Id", "spoiler"])
-            o.writeheader()
-            for ii, pp in zip([x['Id'] for x in test], predictions):
-                d = {'Id': ii, 'spoiler': labels[pp]}
-                o.writerow(d)
-
-    if args.holdout:
-        print("avg score over {} iterations was {}".format(args.iterations, score_sum / args.iterations))
+    if args.dev:
+        score = model.score(holdout, y_holdout)
+        print("Score:\t{}".format(score))
+        print("Classification Report:\n")
+        predictions = model.predict(holdout)
+        print(classification_report(predictions, y_holdout, target_names=labels))
+    else:
+        print("Predicting and saving test data...")
+        predictions = model.predict(test)
+        o = DictWriter(open("predictions.csv", 'w'), ["Id", "spoiler"])
+        o.writeheader()
+        for ii, pp in zip([x['Id'] for x in test], predictions):
+            d = {'Id': ii, 'spoiler': labels[pp]}
+            o.writerow(d)
