@@ -22,6 +22,8 @@ END_WORDS = ["reveal", "revealed", "reveals",
 
 PUNCTUATION = string.punctuation
 
+NAMES = set(line.strip() for line in open('names.txt'))
+
 def remove_punctuation(doc):
     return "".join([ch for ch in doc if ch not in PUNCTUATION]).lower()
 
@@ -54,6 +56,32 @@ class KeyWordsTransformer(BaseEstimator, TransformerMixin):
 
         return result
 
+class NameTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, remove=True, replace_with=""):
+        self.remove = remove
+        self.replace_with = replace_with
+
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, sentences):
+        result = []
+        for sentence in sentences:
+            sentence = sentence.lower()
+            new_sentence = ""
+            for word in sentence:
+                if not word in NAMES:
+                    new_sentence += word
+                else:
+                    if not self.remove:
+                        new_sentence += self.replace_with
+
+                new_sentence += ""
+
+            result.append(sentence)
+
+        return result
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="feature options")
     parser.add_argument("--limit", type=int, default=-1,
@@ -68,7 +96,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Need names for analysis, but there has to be a way to programatically get them
-    feature_union_names = ["sentence", "ngrams", "trope", "keywords"]
+    feature_union_names = ["sentence", "ngrams_2", "ngrams_3", "ngrams_4", "ngrams_5", "trope", "keywords"]
     pipeline = Pipeline([
         ("union", FeatureUnion(
             transformer_list=[
@@ -77,11 +105,32 @@ if __name__ == "__main__":
                     ("vectorizer", TfidfVectorizer()),
                 ])),
 
-                ("ngrams", Pipeline([
+                ("ngrams_2", Pipeline([
                     ("selector", ItemSelector(key="sentence")),
-                    # TODO: filter or do something with names here
+                    ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
                     ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
-                                                   ngram_range=(2, 5))),
+                                                   ngram_range=(2, 2))),
+                ])),
+
+                ("ngrams_3", Pipeline([
+                    ("selector", ItemSelector(key="sentence")),
+                    ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
+                    ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
+                                                   ngram_range=(3, 3))),
+                ])),
+
+                ("ngrams_4", Pipeline([
+                    ("selector", ItemSelector(key="sentence")),
+                    ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
+                    ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
+                                                   ngram_range=(4, 4))),
+                ])),
+
+                ("ngrams_5", Pipeline([
+                    ("selector", ItemSelector(key="sentence")),
+                    ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
+                    ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
+                                                   ngram_range=(5, 5))),
                 ])),
 
                 ("trope", Pipeline([
