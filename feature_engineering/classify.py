@@ -24,8 +24,29 @@ PUNCTUATION = string.punctuation
 
 NAMES = set(line.strip() for line in open('names.txt'))
 
-def remove_punctuation(doc):
-    return "".join([ch for ch in doc if ch not in PUNCTUATION]).lower()
+def remove_punctuation(doc, lower=True, punctuation=PUNCTUATION):
+    if lower:
+        return "".join([ch for ch in doc if ch not in punctuation]).lower()
+    else:
+        return "".join([ch for ch in doc if ch not in punctuation])
+
+IMDB = {}
+with open("movie_metadata.csv") as csvfile:
+    reader = DictReader(csvfile)
+    for row in reader:
+        key = remove_punctuation(row["movie_title"], lower=False, punctuation=" {}".format(PUNCTUATION))
+        IMDB[key] = {
+            "duration": row["duration"],
+            "gross": row["gross"],
+            "genres": row["genres"],
+            "plot_keywords": row["plot_keywords"],
+            "language": row["language"],
+            "country": row["country"],
+            "content_rating": row["content_rating"],
+            "budget": row["budget"],
+            "title_year": row["title_year"],
+            "imdb_score": row["imdb_score"]
+        }
 
 class ItemSelector(BaseEstimator, TransformerMixin):
     def __init__(self, key):
@@ -82,6 +103,39 @@ class NameTransformer(BaseEstimator, TransformerMixin):
 
         return result
 
+class IMDBTransformer(BaseEstimator, TransformerMixin):
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, pages):
+        result = []
+        for page in pages:
+            try:
+                obj = IMDB[page]
+            except:
+                obj = {}
+
+            result.append(obj)
+
+        return result
+
+class PlotKeywordTransformer(BaseEstimator, TransformerMixin):
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, pages):
+        result = []
+        for page in pages:
+            try:
+                plot_keywords = IMDB[page]["plot_keywords"]
+                plot = [" ".join(word) for word in words.split("|")]
+            except:
+                plot = "NO_PLOT_NO_PLOT"
+
+            result.append(plot)
+
+        return result
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="feature options")
     parser.add_argument("--limit", type=int, default=-1,
@@ -96,7 +150,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Need names for analysis, but there has to be a way to programatically get them
-    feature_union_names = ["sentence", "ngrams_2", "ngrams_3", "ngrams_4", "ngrams_5", "trope", "keywords"]
+    feature_union_names = [
+        "sentence",
+        # "ngrams_2",
+        # "ngrams_3",
+        "ngrams_4",
+        # "ngrams_5",
+        "trope",
+        "keywords",
+        # "imdb"
+    ]
+
     pipeline = Pipeline([
         ("union", FeatureUnion(
             transformer_list=[
@@ -105,19 +169,24 @@ if __name__ == "__main__":
                     ("vectorizer", TfidfVectorizer()),
                 ])),
 
-                ("ngrams_2", Pipeline([
-                    ("selector", ItemSelector(key="sentence")),
-                    ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
-                    ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
-                                                   ngram_range=(2, 2))),
-                ])),
-
-                ("ngrams_3", Pipeline([
-                    ("selector", ItemSelector(key="sentence")),
-                    ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
-                    ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
-                                                   ngram_range=(3, 3))),
-                ])),
+                # ("page", Pipeline([
+                #     ("selector", ItemSelector(key="page")),
+                #     ("vectorizer", TfidfVectorizer()),
+                # ])),
+                #
+                # ("ngrams_2", Pipeline([
+                #     ("selector", ItemSelector(key="sentence")),
+                #     ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
+                #     ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
+                #                                    ngram_range=(2, 2))),
+                # ])),
+                #
+                # ("ngrams_3", Pipeline([
+                #     ("selector", ItemSelector(key="sentence")),
+                #     ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
+                #     ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
+                #                                    ngram_range=(3, 3))),
+                # ])),
 
                 ("ngrams_4", Pipeline([
                     ("selector", ItemSelector(key="sentence")),
@@ -125,13 +194,13 @@ if __name__ == "__main__":
                     ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
                                                    ngram_range=(4, 4))),
                 ])),
-
-                ("ngrams_5", Pipeline([
-                    ("selector", ItemSelector(key="sentence")),
-                    ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
-                    ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
-                                                   ngram_range=(5, 5))),
-                ])),
+                #
+                # ("ngrams_5", Pipeline([
+                #     ("selector", ItemSelector(key="sentence")),
+                #     ("names", NameTransformer(remove=False, replace_with="NAME_CONSTANT_NAME_CONSTANT")),
+                #     ("vectorizer", TfidfVectorizer(preprocessor=remove_punctuation,
+                #                                    ngram_range=(5, 5))),
+                # ])),
 
                 ("trope", Pipeline([
                     ("selector", ItemSelector(key="trope")),
@@ -143,14 +212,25 @@ if __name__ == "__main__":
                     ("count_keywords", KeyWordsTransformer()),
                     ("vectorizer", DictVectorizer()),
                 ])),
+
+                # ("imdb", Pipeline([
+                #     ("selector", ItemSelector(key="page")),
+                #     ("imdb", IMDBTransformer()),
+                #     ("vectorizer", DictVectorizer())
+                # ])),
             ],
 
             # weight components in FeatureUnion
-            transformer_weights={
+            transformer_weights = {
                 "sentence": 1.0,
-                "ngrams": 1.0,
-                "trope": 1.0,
-                "keywords": 1.0,
+                # "page": 1.0,
+                # "ngrams_2": 1.0,
+                # "ngrams_3": 1.0,
+                "ngrams_4": 0.8,
+                # "ngrams_5": 1.0,
+                "trope": 0.8,
+                "keywords": 0.8,
+                # "imdb": 1.0,
             },
         )),
 
