@@ -25,8 +25,9 @@ def weight_vector(x, y, alpha):
     The vector w should be returned as an Numpy array.
     """
 
-    w = np.zeros(len(x[0]))
-    # TODO: IMPLEMENT THIS FUNCTION
+    ya = y * alpha
+    w = ya.dot(x)
+
     return w
 
 
@@ -38,7 +39,10 @@ def find_support(x, y, w, b, tolerance=0.001):
     """
 
     support = set()
-    # TODO: IMPLEMENT THIS FUNCTION
+    for i, xi in enumerate(x):
+        if (abs(xi.dot(w) + b - 1) <= tolerance or abs(xi.dot(w) + b + 1) <= tolerance):
+            support.add(i)
+
     return support
 
 
@@ -50,5 +54,8 @@ def find_slack(x, y, w, b):
     """
 
     slack = set()
-    # TODO: IMPLEMENT THIS FUNCTION
+    for i, xi in enumerate(x):
+        if y[i] * (xi.dot(w) + b) < 1:
+            slack.add(i)
+
     return slack
