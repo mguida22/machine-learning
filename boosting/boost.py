@@ -1,4 +1,6 @@
 import argparse
+import math
+
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import Perceptron
@@ -75,15 +77,37 @@ class AdaBoost:
             y_train (ndarray): [n_samples] ndarray of data
         """
 
-        # TODO
-
         # Hint: You can create and train a new instantiation
         # of your sklearn weak learner as follows
+        #
+        # w = np.ones(len(y_train))
+        # h = clone(self.base)
+        # h.fit(X_train, y_train, sample_weight=w)
 
         w = np.ones(len(y_train))
-        h = clone(self.base)
-        h.fit(X_train, y_train, sample_weight=w)
-            
+
+        for k in range(self.n_learners):
+            # new learner and add it to our list
+            h = clone(self.base)
+            h.fit(X_train, y_train, sample_weight=w)
+            self.learners.append(h)
+
+            predictions = h.predict(X_train)
+
+            # weighted error
+            err = 0.0
+            for i in range(len(y_train)):
+                if predictions[i] != y_train[i]:
+                    err += w[i]
+
+            err = err / sum(w)
+
+            # accuracy score
+            self.alpha[k] = 0.5 * math.log((1 - err) / err)
+
+            # update weight
+            w =w * np.exp(-1 * self.alpha[k] * predictions * y_train)
+
 
     def predict(self, X):
         """
@@ -96,9 +120,12 @@ class AdaBoost:
             [n_samples] ndarray of predicted labels {-1,1}
         """
 
-        # TODO
+        sum_a_h_x = 0
+        for k in range(self.n_learners):
+            # sum [ a_k * h_k(X)]
+            sum_a_h_x += self.alpha[k] * (self.learners[k].predict(X))
 
-        return np.zeros(X.shape[0])
+        return np.sign(sum_a_h_x)
 
     def score(self, X, y):
         """
@@ -112,9 +139,13 @@ class AdaBoost:
             Prediction accuracy (between 0.0 and 1.0).
         """
 
-        # TODO
+        predictions = self.predict(X)
+        score = 0.0
+        for i in range(len(y)):
+            if y[i] == predictions[i]:
+                score += 1
 
-        return 0.0
+        return score/len(y)
 
     def staged_score(self, X, y):
         """
@@ -130,9 +161,23 @@ class AdaBoost:
             [n_learners] ndarray of scores
         """
 
-        # TODO
+        scores = np.zeros(self.n_learners)
 
-        return  np.zeros(self.n_learners)
+        for n in range(self.n_learners):
+            sum_a_h_x = 0
+            for k in range(n+1):
+                sum_a_h_x += self.alpha[k] * (self.learners[k].predict(X))
+
+            predictions = np.sign(sum_a_h_x)
+
+            score = 0.0
+            for i in range(len(y)):
+                if y[i] == predictions[i]:
+                    score += 1
+
+            scores[n] = score/len(y)
+
+        return scores
 
 
 def mnist_digit_show(flatimage, outname=None):
