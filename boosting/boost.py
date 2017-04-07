@@ -210,12 +210,26 @@ if __name__ == "__main__":
                         help="Restrict training to this many examples")
     parser.add_argument('--n_learners', type=int, default=50,
                         help="Number of weak learners to use in boosting")
+    parser.add_argument('--depth', type=int, default=1,
+                        help="Decision Tree depth")
     args = parser.parse_args()
 
     data = FoursAndNines("../data/mnist.pkl.gz")
 
-    # An example of how your classifier might be called
-    clf = AdaBoost(n_learners=50, base=DecisionTreeClassifier(max_depth=1, criterion="entropy"))
-    clf.fit(data.x_train, data.y_train)
+    # clf = AdaBoost(n_learners=args.n_learners, base=DecisionTreeClassifier(max_depth=args.depth, criterion="entropy"))
+    clf = AdaBoost(n_learners=args.n_learners, base=DecisionTreeClassifier(max_depth=args.depth))
+    clf.fit(data.x_train[:args.limit], data.y_train[:args.limit])
 
-    clf.score(data.y_test)
+    train_staged_score = np.ones(args.n_learners)
+    train_staged_score = train_staged_score - clf.staged_score(data.x_train[:args.limit], data.y_train[:args.limit])
+
+    test_staged_score = np.ones(args.n_learners)
+    test_staged_score = test_staged_score - clf.staged_score(data.x_test[:args.limit], data.y_test[:args.limit])
+
+    plt.plot(train_staged_score, label='train')
+    plt.plot(test_staged_score, label='test')
+    plt.xlabel('iterations')
+    plt.ylabel('accuracy')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
